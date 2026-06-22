@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { verifyAuth } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 import { hasEnoughBalance, initializeAllLeaveBalances } from '@/lib/leave-balance';
 import { 
   calculateLeaveDuration, 
@@ -19,49 +20,76 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const employeeId = searchParams.get('employeeId');
 
-    let sql = `
-      SELECT 
-        vr.id,
-        vr.employee_id,
-        vr.start_date,
-        vr.end_date,
-        vr.days_requested as duration_days,
-        vr.reason,
-        vr.status,
-        vr.created_at,
-        u.full_name,
-        vt.name as vacation_type,
-        vt.color,
-        vt.excel_code,
-        e.employee_id as employee_code
-      FROM vacation_requests vr
-      JOIN employees e ON vr.employee_id = e.id
-      JOIN users u ON e.user_id = u.id
-      JOIN vacation_types vt ON vr.vacation_type_id = vt.id
-      WHERE 1=1
-    `;
-
-    const params: any[] = [];
+    const where: any = {};
 
     if (user.role === 'employee') {
-      sql += ' AND e.user_id = $' + (params.length + 1);
-      params.push(user.userId);
+      where.employee = {
+        user_id: user.userId,
+      };
     }
 
     if (status) {
-      sql += ' AND vr.status = $' + (params.length + 1);
-      params.push(status);
+      where.status = status;
     }
 
     if (employeeId) {
-      sql += ' AND e.employee_id = $' + (params.length + 1);
-      params.push(employeeId);
+      where.employee = {
+        ...(where.employee || {}),
+        employee_id: employeeId,
+      };
     }
 
-    sql += ' ORDER BY vr.created_at DESC';
+    const vacationRequests = await prisma.vacationRequest.findMany({
+      where,
+      select: {
+        id: true,
+        employee_id: true,
+        start_date: true,
+        end_date: true,
+        days_requested: true,
+        reason: true,
+        status: true,
+        created_at: true,
+        employee: {
+          select: {
+            employee_id: true,
+            user: {
+              select: {
+                full_name: true,
+              },
+            },
+          },
+        },
+        vacationType: {
+          select: {
+            name: true,
+            color: true,
+            excel_code: true,
+          },
+        },
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
 
-    const result = await query(sql, params);
-    return NextResponse.json(result.rows);
+    return NextResponse.json(
+      vacationRequests.map((request) => ({
+        id: request.id,
+        employee_id: request.employee_id,
+        start_date: request.start_date,
+        end_date: request.end_date,
+        duration_days: Number(request.days_requested),
+        reason: request.reason,
+        status: request.status,
+        created_at: request.created_at,
+        full_name: request.employee.user.full_name,
+        vacation_type: request.vacationType.name,
+        color: request.vacationType.color,
+        excel_code: request.vacationType.excel_code,
+        employee_code: request.employee.employee_id,
+      }))
+    );
   } catch (error) {
     console.error('Get vacation requests error:', error);
     return NextResponse.json(
