@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
 import { verifyAuth } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,11 +9,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const result = await query(
-      'SELECT id, name, code FROM departments ORDER BY name'
-    );
+    const departments = await prisma.department.findMany({
+      select: {
+        id: true,
+        name: true,
+        code: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
 
-    return NextResponse.json(result.rows);
+    return NextResponse.json(departments);
   } catch (error) {
     console.error('Get departments error:', error);
     return NextResponse.json(
