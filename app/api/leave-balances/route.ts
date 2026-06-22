@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
 import { verifyAuth } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,56 +23,88 @@ export async function GET(req: NextRequest) {
         if (Number.isNaN(employeeId)) {
           return NextResponse.json({ error: 'Invalid employeeId parameter' }, { status: 400 });
         }
-      } else if (employeeCodeParam) {
-        const employeeCodeResult = await query(
-          'SELECT id FROM employees WHERE employee_id = $1',
-          [employeeCodeParam]
-        );
 
-        if (employeeCodeResult.rows.length === 0) {
+        const employee = await prisma.employee.findUnique({
+          where: { id: employeeId },
+          select: { id: true },
+        });
+
+        if (!employee) {
+          return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
+        }
+      } else if (employeeCodeParam) {
+        const employee = await prisma.employee.findFirst({
+          where: { employee_id: employeeCodeParam },
+          select: { id: true },
+        });
+
+        if (!employee) {
           return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
         }
 
-        employeeId = employeeCodeResult.rows[0].id;
+        employeeId = employee.id;
       }
     }
 
     if (!employeeId) {
-      const employeeResult = await query(
-        'SELECT id FROM employees WHERE user_id = $1',
-        [user.userId]
-      );
+      const employee = await prisma.employee.findFirst({
+        where: { user_id: user.userId },
+        select: { id: true },
+      });
 
-      if (employeeResult.rows.length === 0) {
+      if (!employee) {
         return NextResponse.json({ error: 'Employee record not found' }, { status: 404 });
       }
 
-      employeeId = employeeResult.rows[0].id;
+      employeeId = employee.id;
     }
 
-    const result = await query(
-      `SELECT
-         lb.id,
-         lb.employee_id,
-         lb.vacation_type_id,
-         vt.name as vacation_type,
-         vt.code as vacation_type_code,
-         lb.year,
-         lb.annual_quota,
-         lb.accrued_days,
-         lb.used_days,
-         lb.remaining_days,
-         lb.created_at,
-         lb.updated_at
-       FROM leave_balances lb
-       JOIN vacation_types vt ON lb.vacation_type_id = vt.id
-       WHERE lb.employee_id = $1
-         AND lb.year = $2
-       ORDER BY vt.display_order, vt.name`,
-      [employeeId, year]
-    );
+    const balances = await prisma.leaveBalance.findMany({
+      where: {
+        employee_id: employeeId,
+        year,
+      },
+      select: {
+        id: true,
+        employee_id: true,
+        vacation_type_id: true,
+        year: true,
+        annual_quota: true,
+        accrued_days: true,
+        used_days: true,
+        remaining_days: true,
+        created_at: true,
+        updated_at: true,
+        vacationType: {
+          select: {
+            name: true,
+            code: true,
+            display_order: true,
+          },
+        },
+      },
+      orderBy: [
+        { vacationType: { display_order: 'asc' } },
+        { vacationType: { name: 'asc' } },
+      ],
+    });
 
-    return NextResponse.json(result.rows);
+    return NextResponse.json(
+      balances.map((balance) => ({
+        id: balance.id,
+        employee_id: balance.employee_id,
+        vacation_type_id: balance.vacation_type_id,
+        vacation_type: balance.vacationType?.name ?? null,
+        vacation_type_code: balance.vacationType?.code ?? null,
+        year: balance.year,
+        annual_quota: Number(balance.annual_quota ?? 0),
+        accrued_days: Number(balance.accrued_days ?? 0),
+        used_days: Number(balance.used_days ?? 0),
+        remaining_days: Number(balance.remaining_days ?? 0),
+        created_at: balance.created_at,
+        updated_at: balance.updated_at,
+      }))
+    );
   } catch (error) {
     console.error('Get leave balances error:', error);
     return NextResponse.json(

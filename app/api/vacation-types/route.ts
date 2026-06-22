@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
 import { verifyAuth } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,21 +9,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const result = await query(
-      `SELECT 
-        id, 
-        name, 
-        code, 
-        description, 
-        requires_approval,
-        color,
-        excel_code,
-        display_order
-       FROM vacation_types 
-       ORDER BY display_order, name`
-    );
+    const vacationTypes = await prisma.vacationType.findMany({
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        description: true,
+        requires_approval: true,
+        color: true,
+        excel_code: true,
+        display_order: true,
+      },
+      orderBy: [
+        { display_order: 'asc' },
+        { name: 'asc' },
+      ],
+    });
 
-    return NextResponse.json(result.rows);
+    return NextResponse.json(vacationTypes);
   } catch (error) {
     console.error('Get vacation types error:', error);
     return NextResponse.json(

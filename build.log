@@ -1,22 +1,16 @@
 
-> vacation-management-app@1.0.0 build
+> vacation-management-app@1.0.0 build C:\Users\Kim\OneDrive\Pictures\xs
 > next build
 
    ▲ Next.js 14.0.3
-   - Environments: .env.local
+   - Environments: .env.local, .env
 
    Creating an optimized production build ...
  ✓ Compiled successfully
    Linting and checking validity of types ...
    Collecting page data ...
    Generating static pages (0/27) ...
-
- ⚠ metadata.metadataBase is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
    Generating static pages (6/27) 
-
- ⚠ metadata.metadataBase is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
-
- ⚠ metadata.metadataBase is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
    Generating static pages (13/27) 
    Generating static pages (20/27) 
  ✓ Generating static pages (27/27) 
@@ -24,7 +18,7 @@
    Collecting build traces ...
 
 Route (app)                              Size     First Load JS
-┌ ○ /                                    333 B          84.3 kB
+┌ ○ /                                    335 B          84.3 kB
 ├ ○ /_not-found                          0 B                0 B
 ├ λ /api/approvals                       0 B                0 B
 ├ λ /api/auth/login                      0 B                0 B
@@ -34,26 +28,26 @@ Route (app)                              Size     First Load JS
 ├ λ /api/leave-balances                  0 B                0 B
 ├ λ /api/vacation-requests               0 B                0 B
 ├ λ /api/vacation-types                  0 B                0 B
-├ ○ /approvals                           343 B          84.3 kB
-├ ○ /auth/login                          298 B          84.2 kB
-├ ○ /calendar                            341 B          84.3 kB
-├ ○ /dashboard                           3.76 kB        94.4 kB
-├ ○ /dashboard/approvals                 4.21 kB        88.1 kB
-├ ○ /dashboard/calendar                  4.05 kB          88 kB
-├ ○ /dashboard/employees                 4.54 kB        88.5 kB
-├ ○ /dashboard/leave-balances            2.99 kB        86.9 kB
+├ ○ /approvals                           344 B          84.3 kB
+├ ○ /auth/login                          300 B          84.2 kB
+├ ○ /calendar                            343 B          84.3 kB
+├ ○ /dashboard                           4.67 kB        95.4 kB
+├ ○ /dashboard/approvals                 4.31 kB        88.2 kB
+├ ○ /dashboard/calendar                  4.04 kB          88 kB
+├ ○ /dashboard/employees                 2.13 kB        89.3 kB
+├ ○ /dashboard/leave-balances            3.18 kB        87.1 kB
 ├ ○ /dashboard/reports                   2.23 kB        86.2 kB
-├ ○ /dashboard/requests                  5.22 kB        89.2 kB
+├ ○ /dashboard/requests                  2.66 kB        89.8 kB
 ├ ○ /dashboard/settings                  1.79 kB        85.7 kB
-├ ○ /employees                           342 B          84.3 kB
-├ ○ /login                               2.71 kB        86.6 kB
-├ ○ /reports                             336 B          84.3 kB
+├ ○ /employees                           343 B          84.3 kB
+├ ○ /login                               2.71 kB        86.7 kB
+├ ○ /reports                             338 B          84.3 kB
 └ ○ /vacation-requests                   337 B          84.3 kB
 + First Load JS shared by all            83.9 kB
-  ├ chunks/472-6f76c80d92c2facd.js       28.8 kB
-  ├ chunks/fd9d1056-1b957377268fcb1a.js  53.3 kB
-  ├ chunks/main-app-d13c9cfecb58b700.js  218 B
-  └ chunks/webpack-ae1ecbcb59b6500d.js   1.68 kB
+  ├ chunks/4841dddb-9b9f481c14f4c5a3.js  53.3 kB
+  ├ chunks/614-ff795f7f01b0ff62.js       28.8 kB
+  ├ chunks/main-app-0f314204ee9d66dd.js  219 B
+  └ chunks/webpack-37cb513d33716dea.js   1.68 kB
 
 
 ○  (Static)   prerendered as static content
