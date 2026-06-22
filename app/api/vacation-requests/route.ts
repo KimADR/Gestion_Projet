@@ -118,19 +118,23 @@ export async function POST(req: NextRequest) {
     }
 
     // Get employee ID from user
-    const empResult = await query(
-      'SELECT id FROM employees WHERE user_id = $1',
-      [user.userId]
-    );
+    const employeeRecord = await prisma.employee.findFirst({
+      where: {
+        user_id: user.userId,
+      },
+      select: {
+        id: true,
+      },
+    });
 
-    if (empResult.rows.length === 0) {
+    if (!employeeRecord) {
       return NextResponse.json(
         { error: 'Employee record not found' },
         { status: 404 }
       );
     }
 
-    const employeeId = empResult.rows[0].id;
+    const employeeId = employeeRecord.id;
 
     // Use the year of the start date for balance calculations
     const start = new Date(startDate);
@@ -146,19 +150,23 @@ export async function POST(req: NextRequest) {
     const year = start.getFullYear();
 
     // Get vacation type to verify it exists
-    const typeResult = await query(
-      'SELECT code FROM vacation_types WHERE id = $1',
-      [vacationTypeId]
-    );
+    const vacationType = await prisma.vacationType.findUnique({
+      where: {
+        id: vacationTypeId,
+      },
+      select: {
+        code: true,
+      },
+    });
 
-    if (typeResult.rows.length === 0) {
+    if (!vacationType) {
       return NextResponse.json(
         { error: 'Vacation type not found' },
         { status: 404 }
       );
     }
 
-    const leaveTypeCode = typeResult.rows[0].code;
+    const leaveTypeCode = vacationType.code;
 
     if (leaveTypeCode === 'annual_leave_half') {
       return NextResponse.json(
@@ -228,19 +236,34 @@ export async function POST(req: NextRequest) {
     }
 
     // Check for overlapping vacation requests
-    const overlapResult = await query(
-      `SELECT COUNT(*) as count FROM vacation_requests
-       WHERE employee_id = $1
-       AND status IN ('pending', 'approved')
-       AND (
-         (start_date <= $2::date AND end_date >= $2::date) OR
-         (start_date <= $3::date AND end_date >= $3::date) OR
-         (start_date >= $2::date AND end_date <= $3::date)
-       )`,
-      [employeeId, startDate, endDate]
-    );
+    const overlappingCount = await prisma.vacationRequest.count({
+      where: {
+        employee_id: employeeId,
+        status: {
+          in: ['pending', 'approved'],
+        },
+        OR: [
+          {
+            start_date: {
+              lte: new Date(endDate),
+            },
+            end_date: {
+              gte: new Date(startDate),
+            },
+          },
+          {
+            start_date: {
+              lte: new Date(startDate),
+            },
+            end_date: {
+              gte: new Date(endDate),
+            },
+          },
+        ],
+      },
+    });
 
-    if (parseInt(overlapResult.rows[0].count) > 0) {
+    if (overlappingCount > 0) {
       return NextResponse.json(
         { error: 'This date range overlaps with an existing vacation request' },
         { status: 400 }
@@ -248,42 +271,77 @@ export async function POST(req: NextRequest) {
     }
 
     // Insert vacation request with SERVER-CALCULATED duration
-    const insertResult = await query(
-      `INSERT INTO vacation_requests (employee_id, vacation_type_id, start_date, end_date, days_requested, reason, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
-       RETURNING id`,
-      [employeeId, vacationTypeId, startDate, endDate, daysRequested, reason || null]
-    );
-
-    const newId = insertResult.rows[0].id;
+    const createdRequest = await prisma.vacationRequest.create({
+      data: {
+        employee_id: employeeId,
+        vacation_type_id: vacationTypeId,
+        start_date: new Date(startDate),
+        end_date: new Date(endDate),
+        days_requested: daysRequested,
+        reason: reason || null,
+        status: 'pending',
+      },
+      select: {
+        id: true,
+      },
+    });
 
     // Return enriched row so UI can display new request without refresh
-    const enriched = await query(
-      `SELECT vr.id,
-              vr.employee_id,
-              vr.start_date,
-              vr.end_date,
-              vr.days_requested as duration_days,
-              vr.reason,
-              vr.status,
-              vr.created_at,
-              u.full_name,
-              vt.name as vacation_type,
-              vt.color,
-              vt.excel_code,
-              e.employee_id as employee_code
-       FROM vacation_requests vr
-       JOIN employees e ON vr.employee_id = e.id
-       JOIN users u ON e.user_id = u.id
-       JOIN vacation_types vt ON vr.vacation_type_id = vt.id
-       WHERE vr.id = $1`,
-      [newId]
-    );
+    const enriched = await prisma.vacationRequest.findUnique({
+      where: {
+        id: createdRequest.id,
+      },
+      select: {
+        id: true,
+        employee_id: true,
+        start_date: true,
+        end_date: true,
+        days_requested: true,
+        reason: true,
+        status: true,
+        created_at: true,
+        employee: {
+          select: {
+            employee_id: true,
+            user: {
+              select: {
+                full_name: true,
+              },
+            },
+          },
+        },
+        vacationType: {
+          select: {
+            name: true,
+            color: true,
+            excel_code: true,
+          },
+        },
+      },
+    });
+
+    if (!enriched) {
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json(
       {
-        ...enriched.rows[0],
+        id: enriched.id,
+        employee_id: enriched.employee_id,
+        start_date: enriched.start_date,
+        end_date: enriched.end_date,
         duration_days: daysRequested,
+        reason: enriched.reason,
+        status: enriched.status,
+        created_at: enriched.created_at,
+        full_name: enriched.employee.user.full_name,
+        vacation_type: enriched.vacationType.name,
+        color: enriched.vacationType.color,
+        excel_code: enriched.vacationType.excel_code,
+        employee_code: enriched.employee.employee_id,
         calculatedDuration: daysRequested,
         durationBreakdown: durationResult.breakdown,
       },
