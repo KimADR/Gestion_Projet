@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { getJwtSecret } from '@/lib/auth';
@@ -15,19 +15,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await query(
-      'SELECT u.id, u.email, u.password_hash, u.role, u.full_name, e.employee_id FROM users u LEFT JOIN employees e ON u.id = e.user_id WHERE u.email = $1',
-      [email]
-    );
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        password_hash: true,
+        role: true,
+        full_name: true,
+        employee: {
+          select: {
+            employee_id: true,
+          },
+        },
+      },
+    });
 
-    if (result.rows.length === 0) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       );
     }
 
-    const user = result.rows[0];
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordMatch) {
@@ -37,12 +47,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const employeeId = user.employee?.employee_id ?? null;
+
     const token = jwt.sign(
       {
         userId: user.id,
         email: user.email,
         role: user.role,
-        employeeId: user.employee_id,
+        employeeId,
       },
       getJwtSecret(),
       { expiresIn: '24h' }
@@ -55,7 +67,7 @@ export async function POST(req: NextRequest) {
         email: user.email,
         role: user.role,
         fullName: user.full_name,
-        employeeId: user.employee_id,
+        employeeId,
       },
     });
   } catch (error) {
