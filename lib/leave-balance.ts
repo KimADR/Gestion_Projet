@@ -1,4 +1,4 @@
-import { query } from './db';
+import { prisma } from '@/lib/prisma';
 
 export interface LeaveBalance {
   id: number;
@@ -15,13 +15,65 @@ export interface LeaveBalance {
 
 // Default quotas per vacation type (TekFutura system)
 const DEFAULT_QUOTAS: Record<string, number> = {
-  annual_leave: 22, // Congé annuel complet
-  annual_leave_half: 0, // Demi-journée (ne consomme pas de quota général)
-  sick_leave: 10.98, // Repos maladie
-  permission: 10.98, // Permission
-  unpaid_leave: 0, // Non-payé (illimité)
-  maternity_leave: 0, // Maternité (spécial)
+  annual_leave: 22,
+  annual_leave_half: 0,
+  sick_leave: 10.98,
+  permission: 10.98,
+  unpaid_leave: 0,
+  maternity_leave: 0,
 };
+
+type PrismaClientLike = typeof prisma;
+
+function toNumber(value: number | string | null | undefined | { toNumber?: () => number; toString?: () => string }): number {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  if (typeof value === 'object' && 'toNumber' in value && typeof value.toNumber === 'function') {
+    const parsed = value.toNumber();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  if (typeof value === 'object' && 'toString' in value && typeof value.toString === 'function') {
+    const parsed = Number(value.toString());
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function toISOString(value: Date | string | null | undefined): string {
+  if (!value) {
+    return '';
+  }
+
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function normalizeLeaveBalance(balance: any): LeaveBalance {
+  return {
+    id: balance.id,
+    employee_id: balance.employee_id,
+    vacation_type_id: balance.vacation_type_id,
+    year: balance.year,
+    annual_quota: toNumber(balance.annual_quota),
+    accrued_days: toNumber(balance.accrued_days),
+    used_days: toNumber(balance.used_days),
+    remaining_days: toNumber(balance.remaining_days),
+    created_at: toISOString(balance.created_at),
+    updated_at: toISOString(balance.updated_at),
+  };
+}
 
 /**
  * Get the current year's leave balance for an employee and vacation type
@@ -29,20 +81,21 @@ const DEFAULT_QUOTAS: Record<string, number> = {
 export async function getLeaveBalance(
   employeeId: number,
   leaveTypeCode: string,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<LeaveBalance | null> {
   try {
-    const result = await query(
-      `SELECT lb.*
-       FROM leave_balances lb
-       JOIN vacation_types vt ON lb.vacation_type_id = vt.id
-       WHERE lb.employee_id = $1
-       AND vt.code = $2
-       AND lb.year = $3`,
-      [employeeId, leaveTypeCode, year]
-    );
+    const balance = await client.leaveBalance.findFirst({
+      where: {
+        employee_id: employeeId,
+        year,
+        vacationType: {
+          code: leaveTypeCode,
+        },
+      },
+    });
 
-    return result.rows.length > 0 ? result.rows[0] : null;
+    return balance ? normalizeLeaveBalance(balance) : null;
   } catch (error) {
     console.error('Error getting leave balance:', error);
     return null;
@@ -54,19 +107,21 @@ export async function getLeaveBalance(
  */
 export async function getEmployeeLeaveBalances(
   employeeId: number,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<LeaveBalance[]> {
   try {
-    const result = await query(
-      `SELECT *
-       FROM leave_balances
-       WHERE employee_id = $1
-       AND year = $2
-       ORDER BY created_at`,
-      [employeeId, year]
-    );
+    const balances = await client.leaveBalance.findMany({
+      where: {
+        employee_id: employeeId,
+        year,
+      },
+      orderBy: {
+        created_at: 'asc',
+      },
+    });
 
-    return result.rows;
+    return balances.map(normalizeLeaveBalance);
   } catch (error) {
     console.error('Error getting employee leave balances:', error);
     return [];
@@ -80,14 +135,14 @@ export async function hasEnoughBalance(
   employeeId: number,
   leaveTypeCode: string,
   daysRequested: number,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<boolean> {
-  const balance = await getLeaveBalance(employeeId, leaveTypeCode, year);
+  const balance = await getLeaveBalance(employeeId, leaveTypeCode, year, client);
 
   if (!balance) {
-    // If no balance record exists, create one with default quota
-    await initializeLeaveBalance(employeeId, leaveTypeCode, year);
-    const newBalance = await getLeaveBalance(employeeId, leaveTypeCode, year);
+    await initializeLeaveBalance(employeeId, leaveTypeCode, year, client);
+    const newBalance = await getLeaveBalance(employeeId, leaveTypeCode, year, client);
     return newBalance ? daysRequested <= newBalance.remaining_days : false;
   }
 
@@ -100,9 +155,10 @@ export async function hasEnoughBalance(
 export async function getRemainingDays(
   employeeId: number,
   leaveTypeCode: string,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<number> {
-  const balance = await getLeaveBalance(employeeId, leaveTypeCode, year);
+  const balance = await getLeaveBalance(employeeId, leaveTypeCode, year, client);
   return balance ? balance.remaining_days : 0;
 }
 
@@ -113,22 +169,38 @@ export async function consumeLeaveBalance(
   employeeId: number,
   leaveTypeId: number,
   daysToConsume: number,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<boolean> {
   try {
-    const result = await query(
-      `UPDATE leave_balances
-       SET used_days = used_days + $1,
-           remaining_days = annual_quota + accrued_days - (used_days + $1),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE employee_id = $2
-       AND vacation_type_id = $3
-       AND year = $4
-       RETURNING *`,
-      [daysToConsume, employeeId, leaveTypeId, year]
-    );
+    const current = await client.leaveBalance.findFirst({
+      where: {
+        employee_id: employeeId,
+        vacation_type_id: leaveTypeId,
+        year,
+      },
+    });
 
-    return result.rows.length > 0;
+    if (!current) {
+      return false;
+    }
+
+    const usedDays = toNumber(current.used_days) + daysToConsume;
+    const annualQuota = toNumber(current.annual_quota);
+    const accruedDays = toNumber(current.accrued_days);
+
+    const updated = await client.leaveBalance.update({
+      where: {
+        id: current.id,
+      },
+      data: {
+        used_days: usedDays,
+        remaining_days: annualQuota + accruedDays - usedDays,
+        updated_at: new Date(),
+      },
+    });
+
+    return Boolean(updated);
   } catch (error) {
     console.error('Error consuming leave balance:', error);
     return false;
@@ -142,22 +214,38 @@ export async function restoreLeaveBalance(
   employeeId: number,
   leaveTypeId: number,
   daysToRestore: number,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<boolean> {
   try {
-    const result = await query(
-      `UPDATE leave_balances
-       SET used_days = GREATEST(0, used_days - $1),
-           remaining_days = annual_quota + accrued_days - GREATEST(0, used_days - $1),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE employee_id = $2
-       AND vacation_type_id = $3
-       AND year = $4
-       RETURNING *`,
-      [daysToRestore, employeeId, leaveTypeId, year]
-    );
+    const current = await client.leaveBalance.findFirst({
+      where: {
+        employee_id: employeeId,
+        vacation_type_id: leaveTypeId,
+        year,
+      },
+    });
 
-    return result.rows.length > 0;
+    if (!current) {
+      return false;
+    }
+
+    const usedDays = Math.max(0, toNumber(current.used_days) - daysToRestore);
+    const annualQuota = toNumber(current.annual_quota);
+    const accruedDays = toNumber(current.accrued_days);
+
+    const updated = await client.leaveBalance.update({
+      where: {
+        id: current.id,
+      },
+      data: {
+        used_days: usedDays,
+        remaining_days: annualQuota + accruedDays - usedDays,
+        updated_at: new Date(),
+      },
+    });
+
+    return Boolean(updated);
   } catch (error) {
     console.error('Error restoring leave balance:', error);
     return false;
@@ -170,34 +258,51 @@ export async function restoreLeaveBalance(
 export async function initializeLeaveBalance(
   employeeId: number,
   leaveTypeCode: string,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<LeaveBalance | null> {
   try {
-    // Get leave type ID
-    const typeResult = await query(
-      'SELECT id FROM vacation_types WHERE code = $1',
-      [leaveTypeCode]
-    );
+    const leaveType = await client.vacationType.findUnique({
+      where: {
+        code: leaveTypeCode,
+      },
+      select: {
+        id: true,
+      },
+    });
 
-    if (typeResult.rows.length === 0) {
+    if (!leaveType) {
       console.error(`Leave type ${leaveTypeCode} not found`);
       return null;
     }
 
-    const leaveTypeId = typeResult.rows[0].id;
+    const leaveTypeId = leaveType.id;
     const annualQuota = DEFAULT_QUOTAS[leaveTypeCode] || 0;
 
-    // Insert or update leave balance
-    const result = await query(
-      `INSERT INTO leave_balances (employee_id, vacation_type_id, year, annual_quota, accrued_days, used_days, remaining_days)
-       VALUES ($1, $2, $3, $4, 0, 0, $4)
-       ON CONFLICT (employee_id, vacation_type_id, year) DO UPDATE
-       SET annual_quota = $4, updated_at = CURRENT_TIMESTAMP
-       RETURNING *`,
-      [employeeId, leaveTypeId, year, annualQuota]
-    );
+    const created = await client.leaveBalance.upsert({
+      where: {
+        employee_id_vacation_type_id_year: {
+          employee_id: employeeId,
+          vacation_type_id: leaveTypeId,
+          year,
+        },
+      },
+      update: {
+        annual_quota: annualQuota,
+        updated_at: new Date(),
+      },
+      create: {
+        employee_id: employeeId,
+        vacation_type_id: leaveTypeId,
+        year,
+        annual_quota: annualQuota,
+        accrued_days: 0,
+        used_days: 0,
+        remaining_days: annualQuota,
+      },
+    });
 
-    return result.rows.length > 0 ? result.rows[0] : null;
+    return normalizeLeaveBalance(created);
   } catch (error) {
     console.error('Error initializing leave balance:', error);
     return null;
@@ -209,11 +314,12 @@ export async function initializeLeaveBalance(
  */
 export async function initializeAllLeaveBalances(
   employeeId: number,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<void> {
   try {
-    for (const [code] of Object.entries(DEFAULT_QUOTAS)) {
-      await initializeLeaveBalance(employeeId, code, year);
+    for (const code of Object.keys(DEFAULT_QUOTAS)) {
+      await initializeLeaveBalance(employeeId, code, year, client);
     }
   } catch (error) {
     console.error('Error initializing all leave balances:', error);
@@ -225,20 +331,31 @@ export async function initializeAllLeaveBalances(
  */
 export async function getLeaveBalanceDetails(
   employeeId: number,
-  year: number = new Date().getFullYear()
+  year: number = new Date().getFullYear(),
+  client: PrismaClientLike = prisma
 ): Promise<Array<LeaveBalance & { vacation_type: string }>> {
   try {
-    const result = await query(
-      `SELECT lb.*, vt.name as vacation_type
-       FROM leave_balances lb
-       JOIN vacation_types vt ON lb.vacation_type_id = vt.id
-       WHERE lb.employee_id = $1
-       AND lb.year = $2
-       ORDER BY vt.name`,
-      [employeeId, year]
-    );
+    const balances = await client.leaveBalance.findMany({
+      where: {
+        employee_id: employeeId,
+        year,
+      },
+      include: {
+        vacationType: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        created_at: 'asc',
+      },
+    });
 
-    return result.rows;
+    return balances.map((balance) => ({
+      ...normalizeLeaveBalance(balance),
+      vacation_type: balance.vacationType.name,
+    }));
   } catch (error) {
     console.error('Error getting leave balance details:', error);
     return [];

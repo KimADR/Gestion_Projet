@@ -1,3 +1,5 @@
+import { prisma } from '@/lib/prisma';
+
 /**
  * Leave Duration Calculation Module
  * Centralized business logic for computing vacation duration
@@ -140,9 +142,11 @@ export function calculateLeaveDuration(
         currentDate.getTime() === end.getTime()
       ) {
         isHlfDay = true;
-      } else if (halfDayType === 'both' && 
-        (currentDate.getTime() === start.getTime() || 
-         currentDate.getTime() === end.getTime())) {
+      } else if (
+        halfDayType === 'both' &&
+        (currentDate.getTime() === start.getTime() ||
+          currentDate.getTime() === end.getTime())
+      ) {
         isHlfDay = true;
       }
 
@@ -236,14 +240,25 @@ export function validateLeaveDuration(
  */
 export async function getPublicHolidaysForYear(
   year: number,
-  query: any
+  client: typeof prisma = prisma
 ): Promise<string[]> {
   try {
-    const result = await query(
-      'SELECT holiday_date FROM public_holidays WHERE EXTRACT(YEAR FROM holiday_date) = $1 ORDER BY holiday_date',
-      [year]
-    );
-    return result.rows.map((row: any) => formatDateISO(new Date(row.holiday_date)));
+    const holidays = await client.publicHoliday.findMany({
+      where: {
+        holiday_date: {
+          gte: new Date(year, 0, 1),
+          lt: new Date(year + 1, 0, 1),
+        },
+      },
+      orderBy: {
+        holiday_date: 'asc',
+      },
+      select: {
+        holiday_date: true,
+      },
+    });
+
+    return holidays.map((holiday) => formatDateISO(new Date(holiday.holiday_date)));
   } catch (error) {
     console.warn(`Failed to fetch public holidays for year ${year}:`, error);
     return [];

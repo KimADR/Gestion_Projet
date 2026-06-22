@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
 import { verifyAuth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { hasEnoughBalance, initializeAllLeaveBalances } from '@/lib/leave-balance';
-import { 
-  calculateLeaveDuration, 
+import { getLeaveBalance, hasEnoughBalance, initializeAllLeaveBalances } from '@/lib/leave-balance';
+import {
+  calculateLeaveDuration,
   validateLeaveDuration,
-  getPublicHolidaysForYear 
+  getPublicHolidaysForYear,
 } from '@/lib/leave-duration';
 
 export async function GET(req: NextRequest) {
@@ -106,10 +105,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Accept new format: startDate, endDate, halfDayType (no daysRequested from client)
     const { vacationTypeId, startDate, endDate, halfDayType = 'none', reason } = await req.json();
 
-    // Validate input
     if (!vacationTypeId || !startDate || !endDate) {
       return NextResponse.json(
         { error: 'Missing required fields: vacationTypeId, startDate, endDate' },
@@ -117,7 +114,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get employee ID from user
     const employeeRecord = await prisma.employee.findFirst({
       where: {
         user_id: user.userId,
@@ -136,7 +132,6 @@ export async function POST(req: NextRequest) {
 
     const employeeId = employeeRecord.id;
 
-    // Use the year of the start date for balance calculations
     const start = new Date(startDate);
     const end = new Date(endDate);
 
@@ -149,7 +144,6 @@ export async function POST(req: NextRequest) {
 
     const year = start.getFullYear();
 
-    // Get vacation type to verify it exists
     const vacationType = await prisma.vacationType.findUnique({
       where: {
         id: vacationTypeId,
@@ -182,11 +176,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Initialize leave balances if they don't exist for the request year
     await initializeAllLeaveBalances(employeeId, year);
 
-    // Calculate leave duration on server (SOURCE OF TRUTH)
-    const publicHolidays = await getPublicHolidaysForYear(year, query);
+    const publicHolidays = await getPublicHolidaysForYear(year);
     const durationResult = calculateLeaveDuration({
       startDate,
       endDate,
@@ -204,7 +196,6 @@ export async function POST(req: NextRequest) {
 
     const daysRequested = durationResult.days;
 
-    // Validate duration
     const validationResult = validateLeaveDuration(
       daysRequested,
       await getAvailableBalance(employeeId, leaveTypeCode, year),
@@ -218,7 +209,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if employee has enough leave balance (unless admin)
     if (user.role !== 'admin') {
       const enoughBalance = await hasEnoughBalance(
         employeeId,
@@ -235,7 +225,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Check for overlapping vacation requests
     const overlappingCount = await prisma.vacationRequest.count({
       where: {
         employee_id: employeeId,
@@ -270,7 +259,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Insert vacation request with SERVER-CALCULATED duration
     const createdRequest = await prisma.vacationRequest.create({
       data: {
         employee_id: employeeId,
@@ -286,7 +274,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Return enriched row so UI can display new request without refresh
     const enriched = await prisma.vacationRequest.findUnique({
       where: {
         id: createdRequest.id,
@@ -365,19 +352,8 @@ async function getAvailableBalance(
   year: number
 ): Promise<number> {
   try {
-    const result = await query(
-      `SELECT lb.remaining_days
-       FROM leave_balances lb
-       JOIN vacation_types vt ON lb.vacation_type_id = vt.id
-       WHERE lb.employee_id = $1 AND vt.code = $2 AND lb.year = $3`,
-      [employeeId, leaveTypeCode, year]
-    );
-
-    if (result.rows.length === 0) {
-      return 0;
-    }
-
-    return parseFloat(result.rows[0].remaining_days) || 0;
+    const balance = await getLeaveBalance(employeeId, leaveTypeCode, year);
+    return Number(balance?.remaining_days ?? 0);
   } catch (error) {
     console.error('Error getting available balance:', error);
     return 0;
