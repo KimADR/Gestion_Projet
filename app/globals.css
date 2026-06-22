@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import './animations.css';
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-[#f5f7fa] font-sans text-sm leading-6 text-slate-700;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-semibold tracking-tight text-slate-900;
+  }
+
+  h1 {
+    @apply text-3xl md:text-4xl text-balance;
+  }
+
+  h2 {
+    @apply text-2xl md:text-3xl text-balance;
+  }
+
+  h3 {
+    @apply text-xl md:text-2xl text-balance;
+  }
+
+  h4 {
+    @apply text-lg md:text-xl;
+  }
+
+  p {
+    @apply text-sm leading-6;
+  }
+}
+
+@layer components {
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ease-out;
+    @apply active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-slate-900 text-white hover:bg-slate-800;
+  }
+
+  .btn-secondary {
+    @apply btn bg-slate-100 text-slate-800 hover:bg-slate-200;
+  }
+
+  .btn-outline {
+    @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  }
+
+  .btn-subtle {
+    @apply btn bg-transparent text-slate-600 hover:bg-slate-100;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800;
+  }
+
+  .btn-accent {
+    @apply btn bg-cyan-600 text-white hover:bg-cyan-700;
+  }
+
+  /* Cards */
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-xs;
+  }
+
+  .card-elevated {
+    @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm;
+  }
+
+  .card-hover {
+    @apply card cursor-pointer transition-colors duration-200 hover:border-slate-300 hover:bg-slate-50;
+  }
+
+  /* Inputs & Forms */
+  .input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400;
+    @apply transition-colors duration-200 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200;
+  }
+
+  .input-label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700;
+  }
+
+  .input-help {
+    @apply mt-1 text-xs text-slate-500;
+  }
+
+  /* Status Badges */
+  .badge {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold;
+  }
+
+  .badge-pending {
+    @apply bg-amber-50 text-amber-700 border-amber-200;
+  }
+
+  .badge-approved {
+    @apply bg-emerald-50 text-emerald-700 border-emerald-200;
+  }
+
+  .badge-rejected {
+    @apply bg-rose-50 text-rose-700 border-rose-200;
+  }
+
+  .badge-active {
+    @apply bg-slate-100 text-slate-700 border-slate-200;
+  }
+
+  .badge-inactive {
+    @apply bg-slate-50 text-slate-500 border-slate-200;
+  }
+
+  /* Utilities */
+  .divider {
+    @apply h-px bg-slate-200;
+  }
+
+  .text-muted {
+    @apply text-slate-500;
+  }
+}
+
+@layer utilities {
+  .transition-smooth {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}

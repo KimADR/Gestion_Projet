@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Approval {
+  id                  Int             @id @default(autoincrement())
+  vacation_request_id Int             @unique
+  approver_id         Int?
+  approved            Boolean?
+  comments            String?
+  approval_reason     String?
+  rejection_reason    String?
+  approved_at         DateTime?       @db.Timestamp(6)
+  is_cancelled        Boolean?        @default(false)
+  cancelled_at        DateTime?       @db.Timestamp(6)
+  cancellation_reason String?
+  created_at          DateTime?       @default(now()) @db.Timestamp(6)
+  approver            User?           @relation(fields: [approver_id], references: [id], onDelete: SetNull)
+  vacationRequest     VacationRequest @relation(fields: [vacation_request_id], references: [id], onDelete: Cascade)
+
+  @@index([vacation_request_id], map: "idx_approvals_vacation_request_id")
+  @@map("approvals")
+}
+
+model Department {
+  id         Int       @id @default(autoincrement())
+  name       String    @unique @db.VarChar(255)
+  code       String    @unique @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  employees  Employee[]
+
+  @@map("departments")
+}
+
+model Employee {
+  id                  Int               @id @default(autoincrement())
+  user_id             Int               @unique
+  employee_id         String            @unique @db.VarChar(50)
+  department_id       Int
+  position            String            @db.VarChar(255)
+  hired_date          DateTime          @db.Date
+  is_active           Boolean?          @default(true)
+  total_vacation_days Int?              @default(25)
+  used_vacation_days  Int?              @default(0)
+  created_at          DateTime?         @default(now()) @db.Timestamp(6)
+  updated_at          DateTime?         @default(now()) @db.Timestamp(6)
+  department          Department        @relation(fields: [department_id], references: [id])
+  user                User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  vacationRequests    VacationRequest[]
+  leaveBalances       LeaveBalance[]
+
+  @@index([department_id], map: "idx_employees_department_id")
+  @@index([user_id], map: "idx_employees_user_id")
+  @@map("employees")
+}
+
+model LeaveBalance {
+  id               Int          @id @default(autoincrement())
+  employee_id      Int
+  vacation_type_id Int
+  year             Int
+  annual_quota     Decimal?     @default(0) @db.Decimal(10, 2)
+  accrued_days     Decimal?     @default(0) @db.Decimal(10, 2)
+  used_days        Decimal?     @default(0) @db.Decimal(10, 2)
+  remaining_days   Decimal?     @default(0) @db.Decimal(10, 2)
+  created_at       DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?    @default(now()) @db.Timestamp(6)
+  employee         Employee     @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  vacationType     VacationType @relation(fields: [vacation_type_id], references: [id])
+
+  @@unique([employee_id, vacation_type_id, year])
+  @@index([employee_id], map: "idx_leave_balances_employee_id")
+  @@index([employee_id, year], map: "idx_leave_balances_employee_year")
+  @@index([year], map: "idx_leave_balances_year")
+  @@map("leave_balances")
+}
+
+model PublicHoliday {
+  id           Int       @id @default(autoincrement())
+  name         String    @db.VarChar(255)
+  holiday_date DateTime  @db.Date
+  country_code String?   @default("MG") @db.VarChar(2)
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@map("public_holidays")
+}
+
+model User {
+  id            Int         @id @default(autoincrement())
+  email         String      @unique @db.VarChar(255)
+  password_hash String      @db.VarChar(255)
+  full_name     String      @db.VarChar(255)
+  role          String      @default("employee") @db.VarChar(50)
+  is_active     Boolean?    @default(true)
+  created_at    DateTime?   @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?   @default(now()) @db.Timestamp(6)
+  approvals     Approval[]
+  employee      Employee?
+
+  @@map("users")
+}
+
+model VacationRequest {
+  id               Int          @id @default(autoincrement())
+  employee_id      Int
+  vacation_type_id Int
+  start_date       DateTime     @db.Date
+  end_date         DateTime     @db.Date
+  days_requested   Decimal      @db.Decimal(5, 2)
+  reason           String?
+  status           String?      @default("pending") @db.VarChar(50)
+  created_at       DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?    @default(now()) @db.Timestamp(6)
+  approval         Approval?
+  employee         Employee     @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  vacationType     VacationType @relation(fields: [vacation_type_id], references: [id])
+
+  @@index([employee_id], map: "idx_vacation_requests_employee_id")
+  @@index([start_date], map: "idx_vacation_requests_start_date")
+  @@index([status], map: "idx_vacation_requests_status")
+  @@map("vacation_requests")
+}
+
+model VacationType {
+  id                Int               @id @default(autoincrement())
+  name              String            @db.VarChar(100)
+  code              String            @unique @db.VarChar(50)
+  description       String?
+  requires_approval Boolean?          @default(true)
+  color             String?           @default("#2563eb") @db.VarChar(7)
+  excel_code        String?           @db.VarChar(10)
+  display_order     Int?              @default(999)
+  created_at        DateTime?         @default(now()) @db.Timestamp(6)
+  vacationRequests  VacationRequest[]
+  leaveBalances     LeaveBalance[]
+
+  @@map("vacation_types")
+}
