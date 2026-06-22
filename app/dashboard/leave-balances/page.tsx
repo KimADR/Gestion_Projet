@@ -74,13 +74,14 @@ export default function DashboardLeaveBalancesPage() {
 
       try {
         const params = new URLSearchParams({ year: String(year) });
+        const normalizedEmployeeCode = selectedEmployeeCode.trim();
 
         if (user.role === 'admin' || user.role === 'manager') {
-          if (!selectedEmployeeCode) {
+          if (!normalizedEmployeeCode) {
             setBalances([]);
             return;
           }
-          params.set('employeeCode', selectedEmployeeCode);
+          params.set('employeeCode', normalizedEmployeeCode);
         }
 
         const res = await fetch(`/api/leave-balances?${params.toString()}`, {

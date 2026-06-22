@@ -11,27 +11,29 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const yearParam = searchParams.get('year');
-    const employeeIdParam = searchParams.get('employeeId');
-    const employeeCodeParam = searchParams.get('employeeCode');
+    const employeeIdParam = searchParams.get('employeeId')?.trim();
+    const employeeCodeParam = searchParams.get('employeeCode')?.trim();
     const year = yearParam ? Number(yearParam) : new Date().getFullYear();
 
     let employeeId: number | null = null;
 
     if (user.role === 'admin' || user.role === 'manager') {
       if (employeeIdParam) {
-        employeeId = Number(employeeIdParam);
-        if (Number.isNaN(employeeId)) {
+        const parsedEmployeeId = Number(employeeIdParam);
+        if (Number.isNaN(parsedEmployeeId)) {
           return NextResponse.json({ error: 'Invalid employeeId parameter' }, { status: 400 });
         }
 
         const employee = await prisma.employee.findUnique({
-          where: { id: employeeId },
+          where: { id: parsedEmployeeId },
           select: { id: true },
         });
 
         if (!employee) {
           return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
         }
+
+        employeeId = employee.id;
       } else if (employeeCodeParam) {
         const employee = await prisma.employee.findFirst({
           where: { employee_id: employeeCodeParam },
@@ -43,6 +45,8 @@ export async function GET(req: NextRequest) {
         }
 
         employeeId = employee.id;
+      } else {
+        return NextResponse.json([], { status: 200 });
       }
     }
 
